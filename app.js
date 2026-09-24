@@ -376,7 +376,7 @@ function renderLogin() {
       <button class="btn primary block">Sign in</button>
     </form>
     <p class="small"><a href="#/reset">Forgot password?</a></p>
-    <p class="small muted">New here? Use the invite link from whoever shared CertKeeper with you.</p>`);
+    <a class="btn block" href="#/signup">Create account</a>`);
   $('#f').onsubmit = e => {
     e.preventDefault();
     const f = e.target.elements;
