@@ -988,7 +988,8 @@ function renderEdit(certId) {
       </section>
 
       <section class="panel stack">
-        <h2>Remind me</h2>
+        <h2>Remind me before it expires</h2>
+        <p class="hint">Counted back from the expiration date.</p>
         <div class="chips" id="rem-chips"></div>
         <div class="inline custom-rem">
           <span class="small">Custom:</span>
@@ -997,7 +998,8 @@ function renderEdit(certId) {
           <span class="small">before</span>
           <button type="button" class="btn small" id="rem-add">Add</button>
         </div>
-        <p class="hint">You get an email on each date you pick, plus a heads-up in CertKeeper.</p>
+        <p class="hint" id="rem-dates"></p>
+        <p class="hint">You get an email on each of those dates, plus a heads-up in CertKeeper.</p>
       </section>
 
       <section class="panel stack">
@@ -1071,7 +1073,24 @@ function renderEdit(certId) {
       b.onclick = () => { reminders.has(b.dataset.off) ? reminders.delete(b.dataset.off) : reminders.add(b.dataset.off); drawChips(); };
     });
     $$('[data-rm]', form).forEach(b => { b.onclick = () => { reminders.delete(b.dataset.rm); drawChips(); }; });
+    drawReminderDates();
   }
+
+  // The actual dates, e.g. "Reminders on Feb 28, 2027 and Mar 24, 2027", so
+  // there's no doubt they count back from the expiration.
+  function drawReminderDates() {
+    const exp = f.expiresOn.value;
+    const offs = Dates.sortOffsets([...reminders]);
+    const t = Dates.today();
+    $('#rem-dates').innerHTML = !Dates.isValid(exp)
+      ? 'Add the expiration date above to see your reminder dates.'
+      : !offs.length ? 'No reminders picked.'
+      : `With this expiration (${Dates.pretty(exp)}), reminders go out on <strong>${listText(offs.map(o => {
+          const d = Dates.reminderDate(exp, o);
+          return d < t ? `${Dates.pretty(d)} (already passed)` : Dates.pretty(d);
+        }))}</strong>.`;
+  }
+  f.expiresOn.addEventListener('change', drawReminderDates);
 
   $('#rem-add').onclick = () => {
     const n = parseInt($('#rem-n').value, 10);
@@ -1091,7 +1110,11 @@ function renderEdit(certId) {
     if (f.expiresOn.value || !f.issuedOn.value) return;
     const rule = f.renewalRule.value === 'classDateEOM' ? 'classDateEOM' : 'classDate';
     const s = Dates.suggestExpiration(rule, null, f.issuedOn.value, validityMonths());
-    if (s) { f.expiresOn.value = s; toast('Expiration filled in from the issue date. Double-check it against your card.'); }
+    if (s) {
+      f.expiresOn.value = s;
+      drawReminderDates();
+      toast('Expiration filled in from the issue date. Double-check it against your card.');
+    }
   });
 
   f.trackerEnabled.onchange = syncTracker;
