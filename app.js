@@ -626,7 +626,7 @@ function openRenewModal(cert) {
       const s = Dates.suggestExpiration(cert.renewalRule, cert.expiresOn, f.renewedOn.value, cert.validityMonths);
       f.expiresOn.value = s;
       hint.textContent = s
-        ? `Suggested from this cert’s rule (${Dates.RULES[cert.renewalRule].toLowerCase()}). Check it against your new card.`
+        ? `Suggested from this cert’s renewal rule (${Dates.RULES[cert.renewalRule].toLowerCase()}). Check it against your new card.`
         : 'Enter the expiration date from your new card.';
     };
     f.renewedOn.oninput = refresh;
@@ -715,7 +715,7 @@ function renderDetail(id) {
         ${c.firstIssuedOn ? row('First certified', Dates.pretty(c.firstIssuedOn)) : ''}
         ${row('Issued / last renewed', c.issuedOn ? Dates.pretty(c.issuedOn) : '—')}
         ${row('Good for', validityText(c.validityMonths))}
-        ${row('When I renew', esc(Dates.RULES[c.renewalRule] || '—'))}
+        ${row('Renewal rule', Dates.RULES[c.renewalRule] ? `${esc(Dates.RULES[c.renewalRule])}<div class="small muted">${esc(Dates.RULE_HELP[c.renewalRule])}</div>` : '—')}
         ${row('Reminders', (c.reminders || []).length ? c.reminders.map(o => esc(Dates.offsetLabel(o))).join(', ') : 'None')}
         ${c.requirements ? row('Needed to recert', `<span class="pre">${esc(c.requirements)}</span>`) : ''}
         ${c.notes ? row('Notes', `<span class="pre">${esc(c.notes)}</span>`) : ''}
@@ -961,10 +961,11 @@ function renderEdit(certId) {
           <label>Good for
             <span class="inline"><input type="number" name="validityN" min="1" max="120" inputmode="numeric"><select name="validityUnit"><option value="y">years</option><option value="m">months</option></select></span>
           </label>
-          <label>When I renew, the new expiration is…
+          <label>Renewal rule
             <select name="renewalRule">${Object.entries(Dates.RULES).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select>
           </label>
         </div>
+        <p class="hint" id="rule-help"></p>
         <label>What’s needed to recert<textarea name="requirements" rows="3" placeholder="e.g. 40 hrs CE, skills check"></textarea></label>
       </section>
 
@@ -1027,6 +1028,7 @@ function renderEdit(certId) {
       if (c[k] !== undefined) f[k].value = c[k] || '';
     }
     if (c.renewalRule) f.renewalRule.value = c.renewalRule;
+    syncRuleHelp();
     if (c.validityMonths !== undefined) {
       const m = c.validityMonths;
       f.validityUnit.value = m && m % 12 === 0 ? 'y' : 'm';
@@ -1044,6 +1046,11 @@ function renderEdit(certId) {
     $('#show-first').hidden = show;
   }
   $('#show-first').onclick = () => { showFirst(true); f.firstIssuedOn.focus(); };
+
+  function syncRuleHelp() {
+    $('#rule-help').textContent = Dates.RULE_HELP[f.renewalRule.value] || '';
+  }
+  f.renewalRule.addEventListener('change', syncRuleHelp);
 
   function syncTracker() {
     $('#tracker-fields').hidden = !f.trackerEnabled.checked;

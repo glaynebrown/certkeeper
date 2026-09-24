@@ -94,11 +94,18 @@ const Dates = (() => {
   }
 
   // ---- renewal rules: how "I renewed" suggests the next expiration ----
+  // Short names fit in a dropdown on a phone; RULE_HELP explains each one.
   const RULES = {
-    fixed: 'Fixed cycle: old expiration + the time it’s good for',
-    classDate: 'Counted from the day I renew / take the class',
-    classDateEOM: 'Counted from the class date, expires end of that month',
-    manual: 'I’ll type the new date myself',
+    fixed: 'Fixed cycle',
+    classDate: 'From the class date',
+    classDateEOM: 'Class date, end of month',
+    manual: 'I’ll type it myself',
+  };
+  const RULE_HELP = {
+    fixed: 'New expiration = old expiration + the time it’s good for. For NREMT and state licenses.',
+    classDate: 'Counted from the day you renew or take the class. For Red Cross and NRP.',
+    classDateEOM: 'Counted from the class date, expiring the last day of that month. For AHA cards.',
+    manual: 'You enter the new expiration yourself when you renew.',
   };
 
   function suggestExpiration(rule, oldExp, renewedOn, months) {
@@ -144,7 +151,7 @@ const Dates = (() => {
   return {
     isValid, today, daysBetween, addDays, addMonths, endOfMonth, pretty, tenure, monthYear,
     PRESET_OFFSETS, parseOffset, offsetLabel, reminderDate, sortOffsets,
-    RULES, suggestExpiration, status, dueReminders,
+    RULES, RULE_HELP, suggestExpiration, status, dueReminders,
   };
 })();
 
