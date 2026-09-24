@@ -180,6 +180,110 @@ function openCardModal(c) {
   });
 }
 
+// ---------- date picker ----------
+// The browser's own calendar can't be styled, so date fields become a
+// rounded button that opens this one. The original <input> stays in the form
+// (as a hidden input with the same name), so code reads and sets it as before.
+const monthNames = style => [...Array(12)].map((_, i) =>
+  new Date(Date.UTC(2000, i, 1)).toLocaleDateString('en-US', { month: style, timeZone: 'UTC' }));
+const CAL_ICON = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 10h17M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+
+function enhanceDateInputs(root) {
+  const valueProp = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  $$('input[type="date"]', root).forEach(input => {
+    const { min, max, required } = input;
+    input.type = 'hidden';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'date-field';
+    const aria = input.getAttribute('aria-label');
+    if (aria) btn.setAttribute('aria-label', aria);
+    input.after(btn);
+
+    const draw = () => {
+      const v = valueProp.get.call(input);
+      btn.innerHTML = `<span class="${v ? '' : 'placeholder'}">${v ? Dates.pretty(v) : 'Select date'}</span>${CAL_ICON}`;
+    };
+    // Setting .value from code (fill-ins, suggestions) redraws the button too.
+    Object.defineProperty(input, 'value', {
+      configurable: true,
+      get: () => valueProp.get.call(input),
+      set: v => { valueProp.set.call(input, v); draw(); },
+    });
+    input.focus = () => btn.focus();
+    draw();
+
+    btn.onclick = () => openDatePicker(input.value, { min, max, clearable: !required }, v => {
+      input.value = v;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      btn.focus();
+    });
+  });
+}
+
+function openDatePicker(value, { min, max, clearable }, onPick) {
+  const t = Dates.today();
+  const start = Dates.isValid(value) ? value : (max && t > max ? max : min && t < min ? min : t);
+  let y = Number(start.slice(0, 4)), m = Number(start.slice(5, 7));
+  const firstYear = min ? Number(min.slice(0, 4)) : 1960;
+  const lastYear = max ? Number(max.slice(0, 4)) : Number(t.slice(0, 4)) + 15;
+  const allowed = d => (!min || d >= min) && (!max || d <= max);
+  const pad = n => String(n).padStart(2, '0');
+
+  openModal(`
+    <div class="dp-head">
+      <button type="button" class="dp-arrow" data-step="-1" aria-label="Previous month">‹</button>
+      <select class="dp-month" aria-label="Month">${monthNames(innerWidth < 380 ? 'short' : 'long').map((n, i) => `<option value="${i + 1}">${n}</option>`).join('')}</select>
+      <select class="dp-year" aria-label="Year">${Array.from({ length: lastYear - firstYear + 1 }, (_, i) => lastYear - i).map(yr => `<option>${yr}</option>`).join('')}</select>
+      <button type="button" class="dp-arrow" data-step="1" aria-label="Next month">›</button>
+    </div>
+    <div class="dp-weekdays" aria-hidden="true"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+    <div class="dp-grid"></div>
+    <div class="dp-foot">
+      ${clearable ? '<button type="button" class="btn ghost small" data-clear>Clear</button>' : ''}
+      <span class="spacer"></span>
+      <button type="button" class="btn ghost small" data-today${allowed(t) ? '' : ' disabled'}>Today</button>
+    </div>`, (modal, close) => {
+    modal.classList.add('dp-modal');
+    const monthSel = $('.dp-month', modal), yearSel = $('.dp-year', modal), grid = $('.dp-grid', modal);
+    const pick = v => { close(); onPick(v); };
+
+    function draw() {
+      monthSel.value = String(m);
+      yearSel.value = String(y);
+      const lead = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+      const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      let html = '<span></span>'.repeat(lead);
+      for (let d = 1; d <= days; d++) {
+        const iso = `${y}-${pad(m)}-${pad(d)}`;
+        html += `<button type="button" class="dp-day${iso === value ? ' selected' : ''}${iso === t ? ' today' : ''}" data-date="${iso}"${allowed(iso) ? '' : ' disabled'} aria-label="${Dates.pretty(iso)}">${d}</button>`;
+      }
+      grid.innerHTML = html;
+      $$('[data-date]', grid).forEach(b => { b.onclick = () => pick(b.dataset.date); });
+      $$('[data-step]', modal).forEach(b => {
+        const step = Number(b.dataset.step);
+        const ny = m + step < 1 ? y - 1 : m + step > 12 ? y + 1 : y;
+        b.disabled = ny < firstYear || ny > lastYear;
+      });
+    }
+    $$('[data-step]', modal).forEach(b => {
+      b.onclick = () => {
+        m += Number(b.dataset.step);
+        if (m < 1) { m = 12; y--; } else if (m > 12) { m = 1; y++; }
+        draw();
+      };
+    });
+    monthSel.onchange = () => { m = Number(monthSel.value); draw(); };
+    yearSel.onchange = () => { y = Number(yearSel.value); draw(); };
+    $('[data-today]', modal).onclick = () => pick(t);
+    if ($('[data-clear]', modal)) $('[data-clear]', modal).onclick = () => pick('');
+    draw();
+    const focusDay = $('.dp-day.selected', grid) || $('.dp-day.today', grid);
+    if (focusDay) focusDay.focus();
+  });
+}
+
 // ---------- pop-up modal ----------
 function openModal(html, onMount) {
   const wrap = document.createElement('div');
@@ -187,7 +291,10 @@ function openModal(html, onMount) {
   wrap.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
   document.body.appendChild(wrap);
   const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
-  const onKey = e => { if (e.key === 'Escape') close(); };
+  const onKey = e => {
+    const modals = $$('.modal-backdrop');
+    if (e.key === 'Escape' && modals[modals.length - 1] === wrap) close();
+  };
   document.addEventListener('keydown', onKey);
   wrap.addEventListener('click', e => {
     if (e.target === wrap || e.target.closest('[data-close]')) close();
@@ -195,7 +302,7 @@ function openModal(html, onMount) {
   const modal = $('.modal', wrap);
   if (onMount) onMount(modal, close);
   const first = $('input, select, textarea, button', modal);
-  if (first) first.focus();
+  if (first && !modal.contains(document.activeElement)) first.focus();
   return close;
 }
 
@@ -510,6 +617,7 @@ function openRenewModal(cert) {
         <button class="btn primary" id="rn-ok">Confirm renewal</button>
       </div>
     </form>`, (m, close) => {
+    enhanceDateInputs(m);
     const f = $('#rn', m).elements;
     const hint = $('#rn-hint', m);
     let typed = false;
@@ -528,6 +636,7 @@ function openRenewModal(cert) {
     $('#rn', m).onsubmit = e => {
       e.preventDefault();
       const renewedOn = f.renewedOn.value, expiresOn = f.expiresOn.value;
+      if (!Dates.isValid(renewedOn) || !Dates.isValid(expiresOn)) return toast('Pick both dates.', true);
       if (expiresOn <= renewedOn) return toast('The new expiration should be after the renewal date.', true);
       const newCard = { front: f.cardFront.files[0], back: f.cardBack.files[0] };
       busy($('#rn-ok', m), async () => {
@@ -780,10 +889,12 @@ function renderCycles(c, cycles) {
 
   const form = $('#entry-form');
   if (form) {
+    enhanceDateInputs(form);
     const f = form.elements;
     f.proof.onchange = () => { $('.file-pick span', form).textContent = f.proof.files[0] ? f.proof.files[0].name : 'Roster / proof'; };
     form.onsubmit = e => {
       e.preventDefault();
+      if (!Dates.isValid(f.date.value)) return toast('Pick a date.', true);
       const entry = { date: f.date.value, title: f.title.value.trim(), notes: f.notes.value.trim() };
       if (hours) entry.amount = Number(f.amount.value) || 0;
       else if (f.students.value) entry.students = Number(f.students.value);
@@ -844,7 +955,7 @@ function renderEdit(certId) {
         </div>
         <button type="button" class="link add-first" id="show-first">+ Add the date you were first certified</button>
         <label id="first-field" hidden>First certified <span class="hint">The very first time you earned it (it never changes when you renew). Shows how long you’ve held it.</span>
-          <input type="date" name="firstIssuedOn">
+          <input type="date" name="firstIssuedOn" max="${Dates.today()}">
         </label>
         <div class="grid2">
           <label>Good for
@@ -907,6 +1018,7 @@ function renderEdit(certId) {
     </form>`;
 
   const form = $('#cf');
+  enhanceDateInputs(form);
   const f = form.elements;
   let reminders = new Set(editing ? editing.reminders || [] : ['1m']);
 

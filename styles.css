@@ -281,6 +281,39 @@ label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 5
 
 .danger-zone { border-color: var(--bad); }
 
+/* ---------- date fields + picker ---------- */
+.date-field {
+  width: 100%; min-height: 42px; padding: 8px 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+  font: inherit; font-size: 1rem; font-weight: 400; text-align: left; cursor: pointer;
+}
+.date-field:hover { border-color: var(--primary); }
+.date-field .placeholder { color: var(--muted); }
+.date-field .icon { width: 18px; height: 18px; flex: none; color: var(--muted); }
+.modal.dp-modal { max-width: 340px; padding: 16px; gap: 8px; border-radius: 20px; }
+.dp-head { display: flex; gap: 6px; align-items: center; }
+.dp-head select { flex: 1; min-height: 38px; padding: 6px 8px; border-radius: 10px; font-weight: 600; font-size: .95rem; }
+.dp-head .dp-year { flex: 0 0 88px; }
+.dp-arrow {
+  width: 38px; height: 38px; flex: none; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: 1.4rem; line-height: 1; cursor: pointer;
+}
+.dp-arrow:hover { background: var(--surface-2); }
+.dp-arrow:disabled { opacity: .35; cursor: default; }
+.dp-weekdays, .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.dp-weekdays span { font-size: .75rem; font-weight: 700; color: var(--muted); padding: 4px 0; }
+.dp-day {
+  aspect-ratio: 1; border: 0; border-radius: 50%; background: transparent; color: var(--text);
+  font: inherit; font-size: .95rem; cursor: pointer;
+}
+.dp-day:hover { background: var(--surface-2); }
+.dp-day.today { box-shadow: inset 0 0 0 1.5px var(--primary); }
+.dp-day.selected { background: var(--primary); color: var(--primary-ink); font-weight: 700; }
+.dp-day:disabled { opacity: .3; cursor: default; background: transparent; }
+.dp-foot { display: flex; align-items: center; }
+
 /* ---------- card ---------- */
 .card-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 8px; }
 .card-slot { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 0; font-weight: 400; }
