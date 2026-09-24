@@ -492,7 +492,7 @@ function renderDashboard() {
         <strong>${attention.length === 1 ? '1 certification needs' : `${attention.length} certifications need`} attention</strong>
         <ul>${attention.map(c => `<li><a href="#/cert/${c.id}">${esc(label(c))}</a>: ${esc(daysText(Dates.status(c, t).days))}</li>`).join('')}</ul>
       </section>` : ''}
-    ${certs.length ? `<div class="cards">${certs.map(c => certCard(c, t)).join('')}</div>` : `
+    ${certs.length ? certSections(certs, t) : `
       <div class="empty">
         <h2>No certifications yet</h2>
         <p>Add your first one. Pick a template and just fill in your number and dates.</p>
@@ -501,7 +501,39 @@ function renderDashboard() {
 
   $$('[data-renewed]', view).forEach(b => { b.onclick = () => openRenewModal(certById(b.dataset.renewed)); });
   $$('[data-card]', view).forEach(b => { b.onclick = () => openCardModal(certById(b.dataset.card)); });
+  const toggle = $('#certs-toggle');
+  if (toggle) {
+    toggle.onclick = () => {
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', open);
+      $('#certs-list').hidden = !open;
+      try { localStorage.setItem(CERTS_COLLAPSED_KEY, open ? '0' : '1'); } catch { /* remembered for this visit only */ }
+    };
+  }
   maybeShowDailyPopup(attention);
+}
+
+// Renewals on top; certificates that don't expire below a divider, in a
+// section that can be collapsed (remembered on this device).
+const CERTS_COLLAPSED_KEY = 'ck-certificates-collapsed';
+function certSections(certs, t) {
+  const renewals = certs.filter(c => Dates.status(c, t).key !== 'never');
+  const keepers = certs.filter(c => Dates.status(c, t).key === 'never')
+    .sort((x, y) => label(x).localeCompare(label(y)));
+  const grid = list => `<div class="cards">${list.map(c => certCard(c, t)).join('')}</div>`;
+  if (!keepers.length) return grid(renewals);
+
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(CERTS_COLLAPSED_KEY) === '1'; } catch { /* default: open */ }
+  return `
+    ${renewals.length ? `<h2 class="section-title">Renewals <span class="muted">· ${renewals.length}</span></h2>${grid(renewals)}` : ''}
+    <section class="cert-section${renewals.length ? ' divided' : ''}">
+      <button type="button" class="section-toggle" id="certs-toggle" aria-expanded="${!collapsed}" aria-controls="certs-list">
+        <span class="section-title">Certificates <span class="muted">· ${keepers.length}</span></span>
+        <span class="chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </button>
+      <div id="certs-list"${collapsed ? ' hidden' : ''}>${grid(keepers)}</div>
+    </section>`;
 }
 
 function certCard(c, t) {
