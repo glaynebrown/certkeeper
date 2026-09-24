@@ -55,7 +55,8 @@ const ERRORS = {
   'auth/requires-recent-login': 'For safety, sign out and back in, then try again.',
   'auth/network-request-failed': 'No connection. Check your internet and try again.',
   'permission-denied': 'You don’t have permission to do that.',
-  'storage/unauthorized': 'Upload refused. Files must be a PDF or photo under 10 MB.',
+  // Type and size are checked before uploading, so a refusal here means a permissions problem.
+  'storage/unauthorized': 'The server refused this file. Wait a minute and try again. If it keeps happening, sign out and back in.',
 };
 const friendlyError = e => ERRORS[e && e.code] || (e && e.message) || 'Something went wrong.';
 
