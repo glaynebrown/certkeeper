@@ -126,16 +126,19 @@ const Dates = (() => {
   }
 
   // Reminder keys whose date has arrived but haven't been emailed yet. 'exp'
-  // is the built-in "expires today" notice. Once the cert has expired nothing
-  // more is sent -- the in-app banner takes over from there.
+  // is the built-in "expires today" notice; 'again' is a snoozed reminder
+  // ("remind me again in 1 week"). Once the cert has expired nothing more is
+  // sent -- the in-app banner takes over from there.
   function dueReminders(cert, t) {
     if (!isValid(cert.expiresOn) || t > cert.expiresOn) return [];
     const sent = cert.remindersSent || [];
-    return [...(cert.reminders || []), 'exp'].filter(key => {
+    const due = [...(cert.reminders || []), 'exp'].filter(key => {
       if (sent.includes(key)) return false;
       const date = key === 'exp' ? cert.expiresOn : reminderDate(cert.expiresOn, key);
       return date && date <= t;
     });
+    if (isValid(cert.remindAgainOn) && cert.remindAgainOn <= t) due.push('again');
+    return due;
   }
 
   return {

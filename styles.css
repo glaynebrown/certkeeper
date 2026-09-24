@@ -229,6 +229,7 @@ label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 5
 }
 .detail-head h1 { font-size: 1.6rem; }
 .big-exp { font-size: 1.05rem; font-weight: 600; margin: 8px 0 10px; }
+.snoozed-note { margin: -4px 0 10px; }
 .panel {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow);

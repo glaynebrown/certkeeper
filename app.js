@@ -435,20 +435,59 @@ function maybeShowDailyPopup(attention) {
         <div class="row wrap">
           ${renew ? `<a class="btn small" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : ''}
           <button class="btn small" data-renewed="${c.id}">I renewed</button>
-          <button class="btn small ghost" data-snooze="${c.id}">Snooze 1 week</button>
+          <button class="btn small ghost" data-snooze="${c.id}">Snooze</button>
         </div></li>`;
     }).join('')}</ul>
     <div class="modal-actions"><button class="btn primary" data-close>Got it</button></div>`, (m, close) => {
     $$('[data-renewed]', m).forEach(b => { b.onclick = () => { close(); openRenewModal(certById(b.dataset.renewed)); }; });
     $$('[data-snooze]', m).forEach(b => {
-      b.onclick = () => busy(b, async () => {
-        await Store.snooze(b.dataset.snooze, Dates.addDays(Dates.today(), 7));
-        applyLocal(b.dataset.snooze, { snoozedUntil: Dates.addDays(Dates.today(), 7) });
+      b.onclick = () => openSnoozeModal(certById(b.dataset.snooze), () => {
         b.closest('li').remove();
-        toast('Snoozed for a week. Email reminders still go out on schedule.');
         if (!$('.attn-list li', m)) close();
+        if (parseHash().path === '/') renderDashboard();
       });
     });
+  });
+}
+
+// ---------- snooze ("remind me again in ...") ----------
+const SNOOZE_CHOICES = [[3, '3 days'], [7, '1 week'], [14, '2 weeks']];
+
+function openSnoozeModal(cert, done) {
+  const t = Dates.today();
+  const expired = Dates.status(cert, t).key === 'expired';
+  const fits = n => expired || Dates.addDays(t, n) < cert.expiresOn;
+  const emailed = !expired && state.profile.emailReminders !== false;
+  openModal(`
+    <h2>Remind me later</h2>
+    <p class="small muted">${esc(label(cert))} ${expired ? 'expired' : 'expires'} ${Dates.pretty(cert.expiresOn)}. The heads-up hides until the date you pick${emailed ? ', and you’ll get a fresh reminder email that morning' : ''}.</p>
+    <div class="row wrap">${SNOOZE_CHOICES.filter(([n]) => fits(n)).map(([n, text]) => `<button class="btn" data-days="${n}">${text}</button>`).join('')}</div>
+    <form id="sz" class="inline custom-rem">
+      <span class="small">Or in</span>
+      <input type="number" name="n" min="1" max="60" placeholder="10" aria-label="How many" inputmode="numeric" required>
+      <select name="u" aria-label="Days or weeks"><option value="d">days</option><option value="w">weeks</option></select>
+      <button class="btn small">Snooze</button>
+    </form>
+    <div class="modal-actions"><button class="btn ghost" data-close>Cancel</button></div>`, (m, close) => {
+    const go = (days, btn) => {
+      const until = Dates.addDays(Dates.today(), days);
+      if (!fits(days)) return toast(`That’s after it expires (${Dates.pretty(cert.expiresOn)}). Pick a shorter time.`, true);
+      busy(btn, async () => {
+        await Store.snooze(cert.id, until);
+        applyLocal(cert.id, { snoozedUntil: until, remindAgainOn: until });
+        close();
+        toast(`Snoozed. We’ll remind you again on ${Dates.pretty(until)}.`);
+        if (done) done();
+      });
+    };
+    $$('[data-days]', m).forEach(b => { b.onclick = () => go(Number(b.dataset.days), b); });
+    $('#sz', m).onsubmit = e => {
+      e.preventDefault();
+      const f = e.target.elements;
+      const n = parseInt(f.n.value, 10);
+      if (!(n >= 1)) return;
+      go(f.u.value === 'w' ? n * 7 : n, $('button', e.target));
+    };
   });
 }
 
@@ -526,13 +565,14 @@ function renderDetail(id) {
       ${c.issuer ? `<div class="cert-meta">${esc(c.issuer)}</div>` : ''}
       ${tenureText(c) ? `<div class="tenure">${esc(tenureText(c))}</div>` : ''}
       <p class="big-exp">${c.expiresOn ? `Expires ${Dates.pretty(c.expiresOn)} <span class="muted">· ${daysText(s.days)}</span>` : 'No expiration date'}</p>
+      ${isSnoozed(c, t) && s.key !== 'ok' ? `<p class="small muted snoozed-note">Snoozed until ${Dates.pretty(c.snoozedUntil)}.</p>` : ''}
       <div class="row wrap">
         ${renew ? `<a class="btn primary" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : ''}
         <button class="btn" id="renewed">I renewed</button>
         ${hasCard(c) ? `<button class="btn" id="view-card">${CARD_ICON}Card</button>` : ''}
         ${instr ? `<a class="btn" href="${esc(instr)}" target="_blank" rel="noopener">Instructions ↗</a>` : ''}
         ${c.instructionsFile ? `<button class="btn" id="instr-pdf">Instructions PDF</button>` : ''}
-        ${needsAttention(c, t) ? `<button class="btn ghost" id="snooze">Snooze 1 week</button>` : ''}
+        ${needsAttention(c, t) ? `<button class="btn ghost" id="snooze">Snooze</button>` : ''}
       </div>
     </section>
 
@@ -604,14 +644,7 @@ function renderDetail(id) {
   });
   if ($('#instr-pdf')) $('#instr-pdf').onclick = () => openFile(c.instructionsFile.path);
   if ($('#copy-num')) $('#copy-num').onclick = () => navigator.clipboard.writeText(c.certNumber).then(() => toast('Cert number copied'));
-  if ($('#snooze')) {
-    $('#snooze').onclick = e => busy(e.target, async () => {
-      await Store.snooze(c.id, Dates.addDays(t, 7));
-      applyLocal(c.id, { snoozedUntil: Dates.addDays(t, 7) });
-      toast('Snoozed for a week. Email reminders still go out on schedule.');
-      renderDetail(c.id);
-    });
-  }
+  if ($('#snooze')) $('#snooze').onclick = () => openSnoozeModal(c, () => renderDetail(c.id));
   loadCycles(c.id);
 }
 

@@ -135,7 +135,7 @@ const Store = (() => {
       const patch = { ...data, updatedAt: ts() };
       const datesChanged = data.expiresOn !== cert.expiresOn || (data.issuedOn || null) !== (cert.issuedOn || null);
       // A corrected expiration means the reminder schedule starts over.
-      if (data.expiresOn !== cert.expiresOn) patch.remindersSent = [];
+      if (data.expiresOn !== cert.expiresOn) Object.assign(patch, { remindersSent: [], remindAgainOn: null, snoozedUntil: null });
       b.update(certsCol().doc(cert.id), patch);
       if (datesChanged) {
         b.update(cyclesCol(cert.id).doc(cert.currentCycleId), { startOn: data.issuedOn || null, expiresOn: data.expiresOn });
@@ -143,7 +143,8 @@ const Store = (() => {
       await b.commit();
     },
 
-    snooze: (certId, until) => certsCol().doc(certId).update({ snoozedUntil: until }),
+    // Hides the heads-up until `until` and emails again that morning.
+    snooze: (certId, until) => certsCol().doc(certId).update({ snoozedUntil: until, remindAgainOn: until }),
 
     async deleteCert(cert) {
       await deleteStorageTree(certDir(cert.id));
@@ -164,7 +165,7 @@ const Store = (() => {
       b.set(next, { startOn: renewedOn, expiresOn, status: 'current', createdAt: ts() });
       b.update(certsCol().doc(cert.id), {
         issuedOn: renewedOn, expiresOn, lastRenewedOn: renewedOn, currentCycleId: next.id,
-        card: null, remindersSent: [], snoozedUntil: null, updatedAt: ts(),
+        card: null, remindersSent: [], snoozedUntil: null, remindAgainOn: null, snoozeToken: null, updatedAt: ts(),
       });
       await b.commit();
       return next.id;
