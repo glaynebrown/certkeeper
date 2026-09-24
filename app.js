@@ -390,7 +390,7 @@ function renderSignup(code) {
     <form id="f" class="stack">
       <label>Your name<input name="fullName" autocomplete="name" required></label>
       <label>Email<input name="email" type="email" autocomplete="email" required></label>
-      <label>Password <span class="muted">(8+ characters)</span><input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label><span>Password <span class="muted">(8+ characters)</span></span><input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
       ${code
         ? `<input type="hidden" name="code" value="${esc(code)}"><p class="ok-note">✓ Invite link applied</p>`
         : `<label>Invite code<input name="code" autocomplete="off" required></label>`}
@@ -609,8 +609,8 @@ function openRenewModal(cert) {
       <label>Date you renewed / took the class<input type="date" name="renewedOn" value="${t}" max="${t}" required></label>
       <label>New expiration date<input type="date" name="expiresOn" required></label>
       <p class="hint" id="rn-hint"></p>
-      <label>New card <span class="muted">(photo or PDF, optional)</span><input type="file" name="cardFront" accept="image/*,application/pdf"></label>
-      <label>Back of card <span class="muted">(optional)</span><input type="file" name="cardBack" accept="image/*,application/pdf"></label>
+      <label><span>New card <span class="muted">(photo or PDF, optional)</span></span><input type="file" name="cardFront" accept="image/*,application/pdf"></label>
+      <label><span>Back of card <span class="muted">(optional)</span></span><input type="file" name="cardBack" accept="image/*,application/pdf"></label>
       <p class="small muted">${listText(['This cycle’s documents', hasCard(cert) && 'your current card', cert.trackerEnabled && esc((cert.trackerLabel || 'log').toLowerCase())])} move to <em>Past cycles</em>. Nothing is deleted.</p>
       <div class="modal-actions">
         <button type="button" class="btn ghost" data-close>Cancel</button>
