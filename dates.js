@@ -123,13 +123,17 @@ const Dates = (() => {
   }
 
   // ---- status for the colored cards ----
-  // ok = fine, due = inside its earliest reminder window, expired = past date.
+  // By days left: ok (green, 60+), soon (yellow, under 60), urgent (red, a week
+  // or less), expired (black), never (a certificate that doesn't expire).
+  // reminderDue = one of the cert's own reminder dates has arrived; that's
+  // what brings up the heads-up banner and pop-up.
+  const SOON_DAYS = 60, URGENT_DAYS = 7;
   function status(cert, t = today()) {
-    if (!isValid(cert.expiresOn)) return { key: 'none', days: null };
+    if (cert.noExpiry || !isValid(cert.expiresOn)) return { key: 'never', days: null, reminderDue: false };
     const days = daysBetween(t, cert.expiresOn);
-    if (days < 0) return { key: 'expired', days };
-    const due = (cert.reminders || []).some(o => { const r = reminderDate(cert.expiresOn, o); return r && r <= t; });
-    return { key: due ? 'due' : 'ok', days };
+    const reminderDue = (cert.reminders || []).some(o => { const r = reminderDate(cert.expiresOn, o); return r && r <= t; });
+    const key = days < 0 ? 'expired' : days <= URGENT_DAYS ? 'urgent' : days < SOON_DAYS ? 'soon' : 'ok';
+    return { key, days, reminderDue };
   }
 
   // Reminder keys whose date has arrived but haven't been emailed yet. 'exp'

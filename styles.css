@@ -16,6 +16,7 @@
   --bad-bg: #fbe5e3;
   --none: #6b7785;
   --none-bg: #eceff3;
+  --expired: #111418;
   --shadow: 0 1px 2px rgba(16, 32, 48, .06), 0 2px 8px rgba(16, 32, 48, .05);
   --radius: 12px;
   color-scheme: light;
@@ -42,6 +43,7 @@
     --bad-bg: #3a1a18;
     --none: #9aa7b4;
     --none-bg: #242e38;
+    --expired: #000000;
     --shadow: none;
     color-scheme: dark;
   }
@@ -64,6 +66,7 @@
   --bad-bg: #3a1a18;
   --none: #9aa7b4;
   --none-bg: #242e38;
+  --expired: #000000;
   --shadow: none;
   color-scheme: dark;
 }
@@ -186,10 +189,12 @@ label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 5
 .privacy { font-size: .8125rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
 
 /* ---------- status colors ---------- */
-.st-ok { --st: var(--ok); --st-bg: var(--ok-bg); }
-.st-due { --st: var(--due); --st-bg: var(--due-bg); }
-.st-expired { --st: var(--bad); --st-bg: var(--bad-bg); }
-.st-none { --st: var(--none); --st-bg: var(--none-bg); }
+.st-ok { --st: var(--ok); --st-bg: var(--ok-bg); }            /* 60+ days */
+.st-soon { --st: var(--due); --st-bg: var(--due-bg); }         /* under 60 days */
+.st-urgent { --st: var(--bad); --st-bg: var(--bad-bg); }       /* a week or less */
+.st-expired { --st: var(--expired); --st-bg: var(--expired); } /* past the date */
+.st-never { --st: var(--none); --st-bg: var(--none-bg); }      /* doesn't expire */
+.pill.st-expired { color: #fff; box-shadow: 0 0 0 1px var(--border); }
 .pill {
   display: inline-block; padding: 2px 9px; border-radius: 999px;
   font-size: .75rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase;

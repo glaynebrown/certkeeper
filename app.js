@@ -83,7 +83,7 @@ function listText(items) {
 }
 const fmtNum = n => (Math.round(n * 100) / 100).toString();
 
-const STATUS_TEXT = { ok: 'Current', due: 'Renew soon', expired: 'Expired', none: 'No date' };
+const STATUS_TEXT = { ok: 'Current', soon: 'Renew soon', urgent: 'Renew now', expired: 'Expired', never: 'No expiration' };
 
 function daysText(days) {
   if (days == null) return '';
@@ -99,9 +99,13 @@ function validityText(months) {
 }
 
 const isSnoozed = (c, t) => c.snoozedUntil && c.snoozedUntil > t;
+// Heads-up (banner + daily pop-up): once a reminder date arrives, and always
+// in the last week or once expired -- whatever reminders were picked.
+function wantsAttention(s) {
+  return s.reminderDue || s.key === 'urgent' || s.key === 'expired';
+}
 function needsAttention(c, t) {
-  const k = Dates.status(c, t).key;
-  return (k === 'due' || k === 'expired') && !isSnoozed(c, t);
+  return wantsAttention(Dates.status(c, t)) && !isSnoozed(c, t);
 }
 // "RN for 4 yrs 3 mos · since Jun 2022" -- only when a first-certified date is set.
 function tenureText(c) {
@@ -504,6 +508,12 @@ function certCard(c, t) {
   const s = Dates.status(c, t);
   const renew = safeUrl(c.renewLink);
   const meta = [c.issuer, c.certNumber && `#${c.certNumber}`].filter(Boolean).join(' · ');
+  const expires = s.key !== 'never';
+  const actions = [
+    expires && renew ? `<a class="btn small" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : '',
+    expires ? `<button class="btn small" data-renewed="${c.id}">I renewed</button>` : '',
+    hasCard(c) ? `<button class="btn small card-btn" data-card="${c.id}">${CARD_ICON}Card</button>` : '',
+  ].join('');
   return `
     <article class="cert-card st-${s.key}">
       <a class="cert-main" href="#/cert/${c.id}">
@@ -511,13 +521,11 @@ function certCard(c, t) {
         ${c.abbr && c.abbr !== c.name ? `<div class="cert-name">${esc(c.name)}</div>` : ''}
         ${meta ? `<div class="cert-meta">${esc(meta)}</div>` : ''}
         ${c.firstIssuedOn && Dates.tenure(c.firstIssuedOn) ? `<div class="tenure">Held ${esc(Dates.tenure(c.firstIssuedOn))}</div>` : ''}
-        <div class="cert-exp">${c.expiresOn ? `Expires <strong>${Dates.pretty(c.expiresOn)}</strong> <span class="countdown">${daysText(s.days)}${isSnoozed(c, t) && s.key !== 'ok' ? ' · <span class="muted">snoozed</span>' : ''}</span>` : 'No expiration date'}</div>
+        <div class="cert-exp">${s.key === 'never'
+          ? `Doesn’t expire${c.issuedOn ? ` · issued ${Dates.pretty(c.issuedOn)}` : ''}`
+          : `Expires <strong>${Dates.pretty(c.expiresOn)}</strong> <span class="countdown">${daysText(s.days)}${isSnoozed(c, t) && wantsAttention(s) ? ' · <span class="muted">snoozed</span>' : ''}</span>`}</div>
       </a>
-      <div class="cert-actions">
-        ${renew ? `<a class="btn small" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : ''}
-        <button class="btn small" data-renewed="${c.id}">I renewed</button>
-        ${hasCard(c) ? `<button class="btn small card-btn" data-card="${c.id}">${CARD_ICON}Card</button>` : ''}
-      </div>
+      ${actions ? `<div class="cert-actions">${actions}</div>` : ''}
     </article>`;
 }
 
@@ -670,6 +678,7 @@ function renderDetail(id) {
   const t = Dates.today();
   const s = Dates.status(c, t);
   const renew = safeUrl(c.renewLink), instr = safeUrl(c.instructionsLink);
+  const expires = s.key !== 'never';
   const row = (k, v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
 
   view.innerHTML = topbar(back('#/', 'All certs'), `<a class="btn ghost" href="#/cert/${c.id}/edit">Edit</a>`) + `
@@ -678,11 +687,11 @@ function renderDetail(id) {
       ${c.abbr && c.abbr !== c.name ? `<div class="cert-name">${esc(c.name)}</div>` : ''}
       ${c.issuer ? `<div class="cert-meta">${esc(c.issuer)}</div>` : ''}
       ${tenureText(c) ? `<div class="tenure">${esc(tenureText(c))}</div>` : ''}
-      <p class="big-exp">${c.expiresOn ? `Expires ${Dates.pretty(c.expiresOn)} <span class="muted">· ${daysText(s.days)}</span>` : 'No expiration date'}</p>
-      ${isSnoozed(c, t) && s.key !== 'ok' ? `<p class="small muted snoozed-note">Snoozed until ${Dates.pretty(c.snoozedUntil)}.</p>` : ''}
+      <p class="big-exp">${expires ? `Expires ${Dates.pretty(c.expiresOn)} <span class="muted">· ${daysText(s.days)}</span>` : 'Doesn’t expire'}</p>
+      ${isSnoozed(c, t) && wantsAttention(s) ? `<p class="small muted snoozed-note">Snoozed until ${Dates.pretty(c.snoozedUntil)}.</p>` : ''}
       <div class="row wrap">
-        ${renew ? `<a class="btn primary" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : ''}
-        <button class="btn" id="renewed">I renewed</button>
+        ${expires && renew ? `<a class="btn primary" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : ''}
+        ${expires ? `<button class="btn" id="renewed">I renewed</button>` : ''}
         ${hasCard(c) ? `<button class="btn" id="view-card">${CARD_ICON}Card</button>` : ''}
         ${instr ? `<a class="btn" href="${esc(instr)}" target="_blank" rel="noopener">Instructions ↗</a>` : ''}
         ${c.instructionsFile ? `<button class="btn" id="instr-pdf">Instructions PDF</button>` : ''}
@@ -709,7 +718,7 @@ function renderDetail(id) {
             <input type="file" hidden accept="image/*,application/pdf" data-card-side="${side}">
           </label>`;
       }).join('')}</div>
-      <p class="small muted">Your current card. When you renew, it moves to <em>Past cycles</em> and you add the new one.</p>
+      <p class="small muted">${expires ? 'Your current card. When you renew, it moves to <em>Past cycles</em> and you add the new one.' : 'A photo or PDF of your certificate.'}</p>
     </section>
 
     <section class="panel">
@@ -718,17 +727,18 @@ function renderDetail(id) {
         ${row('Cert / license #', c.certNumber ? `${esc(c.certNumber)} <button class="link" id="copy-num">Copy</button>` : '—')}
         ${c.licenseState ? row('State', esc(stateName(c.licenseState))) : ''}
         ${c.firstIssuedOn ? row('First certified', Dates.pretty(c.firstIssuedOn)) : ''}
-        ${row('Issued / last renewed', c.issuedOn ? Dates.pretty(c.issuedOn) : '—')}
-        ${row('Good for', validityText(c.validityMonths))}
-        ${row('Renewal rule', Dates.RULES[c.renewalRule] ? `${esc(Dates.RULES[c.renewalRule])}<div class="small muted">${esc(Dates.RULE_HELP[c.renewalRule])}</div>` : '—')}
-        ${row('Reminders', (c.reminders || []).length ? c.reminders.map(o => esc(Dates.offsetLabel(o))).join(', ') : 'None')}
-        ${c.requirements ? row('Needed to recert', `<span class="pre">${esc(c.requirements)}</span>`) : ''}
+        ${row(expires ? 'Issued / last renewed' : 'Issued', c.issuedOn ? Dates.pretty(c.issuedOn) : '—')}
+        ${expires ? `
+          ${row('Good for', validityText(c.validityMonths))}
+          ${row('Renewal rule', Dates.RULES[c.renewalRule] ? `${esc(Dates.RULES[c.renewalRule])}<div class="small muted">${esc(Dates.RULE_HELP[c.renewalRule])}</div>` : '—')}
+          ${row('Reminders', (c.reminders || []).length ? c.reminders.map(o => esc(Dates.offsetLabel(o))).join(', ') : 'None')}
+          ${c.requirements ? row('Needed to recert', `<span class="pre">${esc(c.requirements)}</span>`) : ''}` : ''}
         ${c.notes ? row('Notes', `<span class="pre">${esc(c.notes)}</span>`) : ''}
       </dl>
     </section>
     <div id="cycles"><p class="muted loading">Loading documents…</p></div>`;
 
-  $('#renewed').onclick = () => openRenewModal(c);
+  if ($('#renewed')) $('#renewed').onclick = () => openRenewModal(c);
   if ($('#view-card')) $('#view-card').onclick = () => openCardModal(c);
   $$('.card-slots [data-view]').forEach(b => { b.onclick = () => openFile(b.dataset.view); });
   $$('[data-thumb]').forEach(img => { Store.fileUrl(img.dataset.thumb).then(url => { img.src = url; }).catch(() => {}); });
@@ -817,11 +827,12 @@ function renderCycles(c, cycles) {
   const hours = c.trackerUnit === 'hours';
   const unit = hours ? 'hours' : 'classes';
   const open = new Set($$('#cycles details[open]').map(d => d.dataset.cycle));
+  const expires = Dates.status(c).key !== 'never';
 
   $('#cycles').innerHTML = `
     <section class="panel">
-      <div class="panel-head"><h2>Documents <span class="muted">· this cycle</span></h2>${uploadButton(current.id)}</div>
-      <p class="small muted">${cycleRange(current)}. Keep proof here: training trackers, CE certificates, class rosters.</p>
+      <div class="panel-head"><h2>Documents${expires ? ' <span class="muted">· this cycle</span>' : ''}</h2>${uploadButton(current.id)}</div>
+      <p class="small muted">${expires ? `${cycleRange(current)}. Keep proof here: training trackers, CE certificates, class rosters.` : 'Keep proof here: transcripts, course completion, anything you may need later.'}</p>
       ${fileList(current)}
     </section>
 
@@ -843,7 +854,7 @@ function renderCycles(c, cycles) {
       ${entryList(c, current)}
     </section>` : ''}
 
-    <section class="panel">
+    ${!expires && !past.length ? '' : `<section class="panel">
       <h2>Past cycles</h2>
       ${past.length ? past.map(p => `
         <details class="cycle" data-cycle="${p.id}"${open.has(p.id) ? ' open' : ''}>
@@ -855,7 +866,7 @@ function renderCycles(c, cycles) {
             ${p.entries.length ? `<h3>${esc(c.trackerLabel || 'Log')}</h3>${entryList(c, p)}` : ''}
           </div>
         </details>`).join('') : `<p class="small muted">When you renew, this cycle moves here with all its documents, so you have everything if you’re audited.</p>`}
-    </section>`;
+    </section>`}`;
 
   const reload = () => loadCycles(c.id);
   const byId = Object.fromEntries(cycles.map(cy => [cy.id, cy]));
@@ -954,15 +965,16 @@ function renderEdit(certId) {
 
       <section class="panel stack">
         <h2>Dates & renewal</h2>
+        <label class="check"><input type="checkbox" name="noExpiry"> This doesn’t expire (e.g. a degree or one-time certificate)</label>
         <div class="grid2">
-          <label>Issued / last renewed<input type="date" name="issuedOn"></label>
-          <label>Expires *<input type="date" name="expiresOn" required></label>
+          <label><span id="issued-label">Issued / last renewed</span><input type="date" name="issuedOn"></label>
+          <label data-expiring>Expires *<input type="date" name="expiresOn" required></label>
         </div>
         <button type="button" class="link add-first" id="show-first">+ Add the date you were first certified</button>
         <label id="first-field" hidden>First certified <span class="hint">The very first time you earned it (it never changes when you renew). Shows how long you’ve held it.</span>
           <input type="date" name="firstIssuedOn" max="${Dates.today()}">
         </label>
-        <div class="grid2">
+        <div class="grid2" data-expiring>
           <label>Good for
             <span class="inline"><input type="number" name="validityN" min="1" max="120" inputmode="numeric"><select name="validityUnit"><option value="y">years</option><option value="m">months</option></select></span>
           </label>
@@ -970,11 +982,11 @@ function renderEdit(certId) {
             <select name="renewalRule">${Object.entries(Dates.RULES).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select>
           </label>
         </div>
-        <p class="hint" id="rule-help"></p>
-        <label>What’s needed to recert<textarea name="requirements" rows="3" placeholder="e.g. 40 hrs CE, skills check"></textarea></label>
+        <p class="hint" id="rule-help" data-expiring></p>
+        <label data-expiring>What’s needed to recert<textarea name="requirements" rows="3" placeholder="e.g. 40 hrs CE, skills check"></textarea></label>
       </section>
 
-      <section class="panel stack">
+      <section class="panel stack" data-expiring>
         <h2>Where to renew</h2>
         <label>Renewal website<input type="url" name="renewLink" placeholder="https://"></label>
         <label>Step-by-step instructions link<input type="url" name="instructionsLink" placeholder="https://"></label>
@@ -987,7 +999,7 @@ function renderEdit(certId) {
         </div>
       </section>
 
-      <section class="panel stack">
+      <section class="panel stack" data-expiring>
         <h2>Remind me before it expires</h2>
         <p class="hint">Counted back from the expiration date.</p>
         <div class="chips" id="rem-chips"></div>
@@ -1042,6 +1054,8 @@ function renderEdit(certId) {
       f.validityN.value = m ? (m % 12 === 0 ? m / 12 : m) : '';
     }
     if (c.firstIssuedOn) showFirst(true);
+    if (c.noExpiry !== undefined) f.noExpiry.checked = !!c.noExpiry;
+    syncExpiry();
     if (c.trackerEnabled !== undefined) f.trackerEnabled.checked = !!c.trackerEnabled;
     if (c.trackerUnit) f.trackerUnit.value = c.trackerUnit;
     if (c.trackerTarget !== undefined) f.trackerTarget.value = c.trackerTarget || '';
@@ -1058,6 +1072,14 @@ function renderEdit(certId) {
     $('#rule-help').textContent = Dates.RULE_HELP[f.renewalRule.value] || '';
   }
   f.renewalRule.addEventListener('change', syncRuleHelp);
+
+  // "Doesn't expire" hides everything about expiring, renewing and reminders.
+  function syncExpiry() {
+    const never = f.noExpiry.checked;
+    $$('[data-expiring]', form).forEach(el => { el.hidden = never; });
+    $('#issued-label').textContent = never ? 'Issued' : 'Issued / last renewed';
+  }
+  f.noExpiry.addEventListener('change', syncExpiry);
 
   function syncTracker() {
     $('#tracker-fields').hidden = !f.trackerEnabled.checked;
@@ -1156,7 +1178,8 @@ function renderEdit(certId) {
     const name = f.name.value.trim();
     const expiresOn = f.expiresOn.value;
     if (!name) return toast('Give the certification a name.', true);
-    if (!Dates.isValid(expiresOn)) return toast('Add the expiration date.', true);
+    const noExpiry = f.noExpiry.checked;
+    if (!noExpiry && !Dates.isValid(expiresOn)) return toast('Add the expiration date, or check “This doesn’t expire”.', true);
     for (const k of ['renewLink', 'instructionsLink']) {
       if (f[k].value.trim() && !safeUrl(f[k].value.trim())) return toast('Links need to start with https://', true);
     }
@@ -1170,13 +1193,14 @@ function renderEdit(certId) {
       licenseState: f.licenseState.value,
       firstIssuedOn: f.firstIssuedOn.value || null,
       issuedOn: f.issuedOn.value || null,
-      expiresOn,
-      validityMonths: validityMonths(),
+      noExpiry,
+      expiresOn: noExpiry ? null : expiresOn,
+      validityMonths: noExpiry ? null : validityMonths(),
       renewalRule: f.renewalRule.value,
       requirements: f.requirements.value.trim(),
       renewLink: f.renewLink.value.trim(),
       instructionsLink: f.instructionsLink.value.trim(),
-      reminders: Dates.sortOffsets([...reminders]),
+      reminders: noExpiry ? [] : Dates.sortOffsets([...reminders]),
       trackerEnabled: f.trackerEnabled.checked,
       trackerLabel: f.trackerLabel.value.trim(),
       trackerUnit: f.trackerUnit.value,
