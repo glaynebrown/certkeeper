@@ -88,7 +88,7 @@ function daysText(days) {
   if (days === 0) return 'expires today';
   const a = Math.abs(days);
   const span = a >= 60 ? `${Math.round(a / 30.44)} months` : `${a} day${a === 1 ? '' : 's'}`;
-  return days > 0 ? `${span} left` : `expired ${span} ago`;
+  return days > 0 ? `${span} remaining` : `expired ${span} ago`;
 }
 
 function validityText(months) {
@@ -402,7 +402,7 @@ function certCard(c, t) {
         ${c.abbr && c.abbr !== c.name ? `<div class="cert-name">${esc(c.name)}</div>` : ''}
         ${meta ? `<div class="cert-meta">${esc(meta)}</div>` : ''}
         ${c.firstIssuedOn && Dates.tenure(c.firstIssuedOn) ? `<div class="tenure">Held ${esc(Dates.tenure(c.firstIssuedOn))}</div>` : ''}
-        <div class="cert-exp">${c.expiresOn ? `Expires <strong>${Dates.pretty(c.expiresOn)}</strong> · ${daysText(s.days)}` : 'No expiration date'}${isSnoozed(c, t) && s.key !== 'ok' ? ' · <span class="muted">snoozed</span>' : ''}</div>
+        <div class="cert-exp">${c.expiresOn ? `Expires <strong>${Dates.pretty(c.expiresOn)}</strong> <span class="countdown">${daysText(s.days)}${isSnoozed(c, t) && s.key !== 'ok' ? ' · <span class="muted">snoozed</span>' : ''}</span>` : 'No expiration date'}</div>
       </a>
       <div class="cert-actions">
         ${renew ? `<a class="btn small" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : ''}

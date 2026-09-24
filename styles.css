@@ -204,6 +204,13 @@ label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 5
 .cert-name { color: var(--muted); font-size: .875rem; margin-top: 2px; }
 .cert-meta { color: var(--muted); font-size: .8125rem; margin-top: 2px; overflow-wrap: anywhere; }
 .cert-exp { font-size: .875rem; margin-top: 8px; }
+/* "21 days remaining" never splits; on very narrow phones it gets its own line. */
+.countdown { white-space: nowrap; }
+.countdown::before { content: "· "; }
+@media (max-width: 359px) {
+  .countdown { display: block; }
+  .countdown::before { content: none; }
+}
 .tenure { font-size: .8125rem; color: var(--muted); margin-top: 2px; }
 .tenure::before { content: "★ "; color: var(--primary); }
 .add-first { align-self: flex-start; }
