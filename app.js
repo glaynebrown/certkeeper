@@ -939,7 +939,7 @@ function renderEdit(certId) {
         <label>Start from a template
           <select name="template">
             <option value="">Custom (start blank)</option>
-            ${groups.map(g => `<optgroup label="${esc(g)}">${TEMPLATES.filter(t => t.group === g).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</optgroup>`).join('')}
+            ${groups.map(g => `<optgroup label="${esc(g)}">${TEMPLATES.filter(t => t.group === g).map(t => `<option value="${t.id}">${esc(t.label || t.name)}</option>`).join('')}</optgroup>`).join('')}
           </select>
         </label>
         <p class="hint">Fills in the issuer, links and renewal rule. You add your number and dates.</p>
@@ -1149,6 +1149,7 @@ function renderEdit(certId) {
       if (!t) return;
       fill(templateFields(t, f.licenseState.value));
       if (t.askState && !f.licenseState.value) f.licenseState.focus();
+      else if (!t.name) f.name.focus();
     };
     // State licenses (RN): switching the state swaps in that state's board.
     f.licenseState.addEventListener('change', () => {

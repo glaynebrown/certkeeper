@@ -101,6 +101,13 @@ const TEMPLATES = [
     renewLink: 'https://atlas.heart.org/',
     requirements: 'Card expires at the end of the month, 2 years after your class.',
   },
+
+  // ---- Other ----
+  // `label` is what the dropdown shows; the name is left blank to type in.
+  {
+    id: 'certificate', group: 'Other', label: 'Certificate (doesn’t expire)',
+    name: '', abbr: '', issuer: '', noExpiry: true,
+  },
 ];
 
 const US_STATES = {
@@ -124,6 +131,7 @@ function templateFields(t, stateCode) {
     validityMonths: t.validityMonths, renewalRule: t.renewalRule,
     trackerEnabled: !!t.trackerEnabled, trackerLabel: t.trackerLabel || '',
     trackerUnit: t.trackerUnit || 'classes', trackerTarget: t.trackerTarget || '',
+    noExpiry: !!t.noExpiry,
   };
   if (t.askState && stateCode && US_STATES[stateCode]) {
     Object.assign(fields, {
