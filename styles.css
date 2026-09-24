@@ -375,6 +375,14 @@ label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 5
   padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
 }
 
+/* ---------- offline ---------- */
+#offline-bar {
+  position: sticky; top: 0; z-index: 40;
+  padding: calc(6px + env(safe-area-inset-top)) 16px 6px;
+  background: var(--due-bg); color: var(--text); border-bottom: 1px solid var(--due);
+  font-size: .8125rem; font-weight: 600; text-align: center;
+}
+
 /* ---------- toast ---------- */
 #toast {
   position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom));

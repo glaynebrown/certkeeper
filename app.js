@@ -56,6 +56,8 @@ const ERRORS = {
   'auth/network-request-failed': 'No connection. Check your internet and try again.',
   'permission-denied': 'You don’t have permission to do that.',
   // Type and size are checked before uploading, so a refusal here means a permissions problem.
+  'unavailable': 'You’re offline, and this isn’t saved on this phone yet.',
+  'storage/retry-limit-exceeded': 'No connection. Check your internet and try again.',
   'storage/unauthorized': 'The server refused this file. Wait a minute and try again. If it keeps happening, sign out and back in.',
 };
 const friendlyError = e => ERRORS[e && e.code] || (e && e.message) || 'Something went wrong.';
@@ -639,6 +641,9 @@ function openRenewModal(cert) {
       if (!Dates.isValid(renewedOn) || !Dates.isValid(expiresOn)) return toast('Pick both dates.', true);
       if (expiresOn <= renewedOn) return toast('The new expiration should be after the renewal date.', true);
       const newCard = { front: f.cardFront.files[0], back: f.cardBack.files[0] };
+      if ((newCard.front || newCard.back) && !navigator.onLine) {
+        return toast('You’re offline. Remove the card photo to renew now and add it later, or wait for a connection.', true);
+      }
       busy($('#rn-ok', m), async () => {
         Store.checkFiles(CARD_SIDES.map(s => newCard[s]).filter(Boolean));
         const cycleId = await Store.renewCert(cert, { renewedOn, expiresOn });
@@ -1303,6 +1308,19 @@ function openDeleteAccount() {
     };
   });
 }
+
+// ---------- offline ----------
+// sw.js keeps the app's own files (and any card or PDF you've opened) on the
+// phone, and Firestore keeps cert info, so the app opens with no signal.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(e => console.warn('Offline mode unavailable:', e));
+}
+function showConnection() {
+  $('#offline-bar').hidden = navigator.onLine;
+}
+addEventListener('online', () => { showConnection(); toast('Back online'); });
+addEventListener('offline', showConnection);
+showConnection();
 
 // ---------- start ----------
 window.addEventListener('hashchange', () => { if (!Store.configured) return; route(); });

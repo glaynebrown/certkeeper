@@ -25,6 +25,21 @@ const Store = (() => {
     console.warn('Firestore offline persistence unavailable:', err.code);
   });
 
+  // Offline, Firestore applies a save on this device at once but only
+  // "finishes" once it reaches the server. Don't make the screen wait for
+  // that -- the save syncs by itself when the connection comes back.
+  const write = p => {
+    if (navigator.onLine) return p;
+    p.catch(e => console.error('Offline save failed to sync', e));
+    return Promise.resolve();
+  };
+  // Files live on Google's servers, so these genuinely need a connection.
+  function needOnline(what) {
+    if (!navigator.onLine) throw new Error(`You’re offline. ${what} needs an internet connection.`);
+  }
+  const FILE_CACHE = 'ck-files-v1'; // matches sw.js
+  const forgetSavedFiles = () => (self.caches ? caches.delete(FILE_CACHE).catch(() => {}) : Promise.resolve());
+
   const ts = () => firebase.firestore.FieldValue.serverTimestamp();
   const uid = () => auth.currentUser.uid;
   const userDoc = () => db.collection('users').doc(uid());
@@ -100,7 +115,8 @@ const Store = (() => {
     currentUser: () => auth.currentUser,
     signIn: (email, pw) => auth.signInWithEmailAndPassword(email, pw),
     signUp: (email, pw) => auth.createUserWithEmailAndPassword(email, pw),
-    signOut: () => auth.signOut(),
+    // Saved copies of cards/PDFs stay on the phone only while signed in.
+    signOut: () => forgetSavedFiles().then(() => auth.signOut()),
     resetPassword: email => auth.sendPasswordResetEmail(email),
     reauth(password) {
       const u = auth.currentUser;
@@ -115,7 +131,7 @@ const Store = (() => {
     // The rules only allow this when inviteCode matches config/invite.
     createProfile: ({ name, inviteCode }) =>
       userDoc().set({ name, inviteCode, emailReminders: true, createdAt: ts() }),
-    updateProfile: data => userDoc().update(data),
+    updateProfile: data => write(userDoc().update(data)),
 
     // ---- certs ----
     watchCerts: (cb, onErr) => certsCol().onSnapshot(s => cb(s.docs.map(withId)), onErr),
@@ -126,7 +142,7 @@ const Store = (() => {
       const b = db.batch();
       b.set(cycle, { startOn: data.issuedOn || null, expiresOn: data.expiresOn, status: 'current', createdAt: ts() });
       b.set(ref, { ...data, currentCycleId: cycle.id, remindersSent: [], snoozedUntil: null, createdAt: ts(), updatedAt: ts() });
-      await b.commit();
+      await write(b.commit());
       return ref.id;
     },
 
@@ -140,13 +156,14 @@ const Store = (() => {
       if (datesChanged) {
         b.update(cyclesCol(cert.id).doc(cert.currentCycleId), { startOn: data.issuedOn || null, expiresOn: data.expiresOn });
       }
-      await b.commit();
+      await write(b.commit());
     },
 
     // Hides the heads-up until `until` and emails again that morning.
-    snooze: (certId, until) => certsCol().doc(certId).update({ snoozedUntil: until, remindAgainOn: until }),
+    snooze: (certId, until) => write(certsCol().doc(certId).update({ snoozedUntil: until, remindAgainOn: until })),
 
     async deleteCert(cert) {
+      needOnline('Deleting a cert');
       await deleteStorageTree(certDir(cert.id));
       await deleteCertDocs(cert.id);
     },
@@ -167,7 +184,7 @@ const Store = (() => {
         issuedOn: renewedOn, expiresOn, lastRenewedOn: renewedOn, currentCycleId: next.id,
         card: null, remindersSent: [], snoozedUntil: null, remindAgainOn: null, snoozeToken: null, updatedAt: ts(),
       });
-      await b.commit();
+      await write(b.commit());
       return next.id;
     },
 
@@ -175,6 +192,7 @@ const Store = (() => {
     getCycles,
 
     async uploadFiles(certId, cycleId, files) {
+      needOnline('Uploading');
       checkFiles(files);
       for (const file of files) {
         const meta = await putFile(`${certDir(certId)}/cycles/${cycleId}`, file);
@@ -183,6 +201,7 @@ const Store = (() => {
     },
 
     async deleteFile(certId, cycleId, file) {
+      needOnline('Deleting a file');
       await removeFile(file.path);
       await cyclesCol(certId).doc(cycleId).collection('files').doc(file.id).delete();
     },
@@ -190,6 +209,7 @@ const Store = (() => {
     fileUrl: path => storage.ref(path).getDownloadURL(),
 
     async setInstructionsFile(cert, file) {
+      needOnline('Uploading');
       checkFiles([file]);
       const meta = await putFile(`${certDir(cert.id)}/instructions`, file);
       if (cert.instructionsFile) await removeFile(cert.instructionsFile.path);
@@ -198,12 +218,14 @@ const Store = (() => {
     },
 
     async removeInstructionsFile(cert) {
+      needOnline('Removing a file');
       if (cert.instructionsFile) await removeFile(cert.instructionsFile.path);
       await certsCol().doc(cert.id).update({ instructionsFile: null });
     },
 
     // ---- the current card (front and optional back) ----
     async setCardFile(cert, side, file) {
+      needOnline('Uploading a card');
       checkFiles([file]);
       const meta = await putFile(`${certDir(cert.id)}/card`, file);
       const old = cert.card && cert.card[side];
@@ -213,6 +235,7 @@ const Store = (() => {
     },
 
     async removeCardFile(cert, side) {
+      needOnline('Removing a card');
       const old = cert.card && cert.card[side];
       await certsCol().doc(cert.id).update({ [`card.${side}`]: firebase.firestore.FieldValue.delete() });
       if (old) await removeFile(old.path);
@@ -222,20 +245,25 @@ const Store = (() => {
     async addEntry(certId, cycleId, entry, file) {
       const data = { ...entry, createdMs: Date.now() };
       if (file) {
+        needOnline('Uploading');
         checkFiles([file]);
         data.file = await putFile(`${certDir(certId)}/cycles/${cycleId}/entries`, file);
       }
-      await cyclesCol(certId).doc(cycleId).collection('entries').add(data);
+      await write(cyclesCol(certId).doc(cycleId).collection('entries').add(data));
     },
 
     async deleteEntry(certId, cycleId, entry) {
-      if (entry.file) await removeFile(entry.file.path);
-      await cyclesCol(certId).doc(cycleId).collection('entries').doc(entry.id).delete();
+      if (entry.file) {
+        needOnline('Deleting a file');
+        await removeFile(entry.file.path);
+      }
+      await write(cyclesCol(certId).doc(cycleId).collection('entries').doc(entry.id).delete());
     },
 
     // ---- export + account deletion ----
     // Every stored file with the folder it belongs in inside the ZIP.
     async listAllFiles(certs, labelOf) {
+      needOnline('Downloading your files');
       const safe = s => String(s || 'Untitled').replace(/[\\/:*?"<>|]+/g, '-').trim();
       const out = [];
       for (const cert of certs) {
@@ -255,6 +283,8 @@ const Store = (() => {
     },
 
     async deleteAccount() {
+      needOnline('Deleting your account');
+      await forgetSavedFiles();
       await deleteStorageTree(`users/${uid()}`);
       for (const d of (await certsCol().get()).docs) await deleteCertDocs(d.id);
       // The profile goes last: the rules only allow touching the certs while it exists.
