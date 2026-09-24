@@ -74,6 +74,11 @@ async function busy(btn, fn) {
 function fmtSize(b) {
   return b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 }
+// ['a', 'b', 'c'] -> "a, b and c" (falsy items skipped).
+function listText(items) {
+  const xs = items.filter(Boolean);
+  return xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs.join('');
+}
 const fmtNum = n => (Math.round(n * 100) / 100).toString();
 
 const STATUS_TEXT = { ok: 'Current', due: 'Renew soon', expired: 'Expired', none: 'No date' };
@@ -134,6 +139,45 @@ function setTheme(theme) {
   } catch { /* storage blocked: still applies for this visit */ }
   if (theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
+}
+
+// ---------- card ----------
+const CARD_SIDES = ['front', 'back'];
+const CARD_ICON = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="11" r="2" fill="currentColor"/><path d="M5 16c.6-1.6 1.7-2.3 3-2.3s2.4.7 3 2.3M14 10h4.5M14 13.5h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const hasCard = c => !!(c.card && (c.card.front || c.card.back));
+const isPdf = f => f.contentType === 'application/pdf';
+
+// Pops up the current card, with the number and expiration underneath.
+function openCardModal(c) {
+  if (!c) return;
+  const sides = CARD_SIDES.filter(s => c.card && c.card[s]);
+  const t = Dates.today();
+  openModal(`
+    <h2>${esc(label(c))} card</h2>
+    <div class="card-view">${sides.map(s => `
+      <figure>
+        ${isPdf(c.card[s])
+          ? `<button class="btn block" data-open="${esc(c.card[s].path)}">Open ${s} (PDF) ↗</button>`
+          : `<img data-img="${esc(c.card[s].path)}" alt="${esc(label(c))} card, ${s}">`}
+        ${sides.length > 1 ? `<figcaption>${s === 'front' ? 'Front' : 'Back'}</figcaption>` : ''}
+      </figure>`).join('')}
+    </div>
+    <dl class="card-facts">
+      ${c.certNumber ? `<div><dt>Number</dt><dd>${esc(c.certNumber)}</dd></div>` : ''}
+      ${c.expiresOn ? `<div><dt>Expires</dt><dd>${Dates.pretty(c.expiresOn)} <span class="muted">· ${daysText(Dates.status(c, t).days)}</span></dd></div>` : ''}
+    </dl>
+    <div class="modal-actions">
+      <a class="btn ghost" href="#/cert/${c.id}" data-close>Cert page</a>
+      <button class="btn primary" data-close>Done</button>
+    </div>`, m => {
+    $$('[data-open]', m).forEach(b => { b.onclick = () => openFile(b.dataset.open); });
+    $$('[data-img]', m).forEach(img => {
+      img.title = 'Tap to open full size';
+      img.onclick = () => openFile(img.dataset.img);
+      Store.fileUrl(img.dataset.img).then(url => { img.src = url; })
+        .catch(e => { img.replaceWith(Object.assign(document.createElement('p'), { className: 'error-text', textContent: friendlyError(e) })); });
+    });
+  });
 }
 
 // ---------- pop-up modal ----------
@@ -343,6 +387,7 @@ function renderDashboard() {
       </div>`}`;
 
   $$('[data-renewed]', view).forEach(b => { b.onclick = () => openRenewModal(certById(b.dataset.renewed)); });
+  $$('[data-card]', view).forEach(b => { b.onclick = () => openCardModal(certById(b.dataset.card)); });
   maybeShowDailyPopup(attention);
 }
 
@@ -362,6 +407,7 @@ function certCard(c, t) {
       <div class="cert-actions">
         ${renew ? `<a class="btn small" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : ''}
         <button class="btn small" data-renewed="${c.id}">I renewed</button>
+        ${hasCard(c) ? `<button class="btn small card-btn" data-card="${c.id}">${CARD_ICON}Card</button>` : ''}
       </div>
     </article>`;
 }
@@ -417,8 +463,9 @@ function openRenewModal(cert) {
       <label>Date you renewed / took the class<input type="date" name="renewedOn" value="${t}" max="${t}" required></label>
       <label>New expiration date<input type="date" name="expiresOn" required></label>
       <p class="hint" id="rn-hint"></p>
-      <label>New card or proof <span class="muted">(optional, PDF or photo)</span><input type="file" name="upload" accept="image/*,application/pdf" multiple></label>
-      <p class="small muted">This cycle’s documents${cert.trackerEnabled ? ` and ${esc((cert.trackerLabel || 'log').toLowerCase())}` : ''} move to <em>Past cycles</em>. Nothing is deleted.</p>
+      <label>New card <span class="muted">(photo or PDF, optional)</span><input type="file" name="cardFront" accept="image/*,application/pdf"></label>
+      <label>Back of card <span class="muted">(optional)</span><input type="file" name="cardBack" accept="image/*,application/pdf"></label>
+      <p class="small muted">${listText(['This cycle’s documents', hasCard(cert) && 'your current card', cert.trackerEnabled && esc((cert.trackerLabel || 'log').toLowerCase())])} move to <em>Past cycles</em>. Nothing is deleted.</p>
       <div class="modal-actions">
         <button type="button" class="btn ghost" data-close>Cancel</button>
         <button class="btn primary" id="rn-ok">Confirm renewal</button>
@@ -443,12 +490,17 @@ function openRenewModal(cert) {
       e.preventDefault();
       const renewedOn = f.renewedOn.value, expiresOn = f.expiresOn.value;
       if (expiresOn <= renewedOn) return toast('The new expiration should be after the renewal date.', true);
-      const files = [...f.upload.files];
+      const newCard = { front: f.cardFront.files[0], back: f.cardBack.files[0] };
       busy($('#rn-ok', m), async () => {
-        Store.checkFiles(files);
+        Store.checkFiles(CARD_SIDES.map(s => newCard[s]).filter(Boolean));
         const cycleId = await Store.renewCert(cert, { renewedOn, expiresOn });
-        applyLocal(cert.id, { issuedOn: renewedOn, expiresOn, lastRenewedOn: renewedOn, currentCycleId: cycleId, remindersSent: [], snoozedUntil: null });
-        if (files.length) await Store.uploadFiles(cert.id, cycleId, files);
+        applyLocal(cert.id, { issuedOn: renewedOn, expiresOn, lastRenewedOn: renewedOn, currentCycleId: cycleId, card: null, remindersSent: [], snoozedUntil: null });
+        for (const side of CARD_SIDES) {
+          if (!newCard[side]) continue;
+          const c = certById(cert.id) || cert;
+          const meta = await Store.setCardFile(c, side, newCard[side]);
+          applyLocal(cert.id, { card: { ...(c.card || {}), [side]: meta } });
+        }
         close();
         toast(`${label(cert)} renewed. Next expiration ${Dates.pretty(expiresOn)}.`);
         route();
@@ -477,10 +529,33 @@ function renderDetail(id) {
       <div class="row wrap">
         ${renew ? `<a class="btn primary" href="${esc(renew)}" target="_blank" rel="noopener">Renew ↗</a>` : ''}
         <button class="btn" id="renewed">I renewed</button>
+        ${hasCard(c) ? `<button class="btn" id="view-card">${CARD_ICON}Card</button>` : ''}
         ${instr ? `<a class="btn" href="${esc(instr)}" target="_blank" rel="noopener">Instructions ↗</a>` : ''}
         ${c.instructionsFile ? `<button class="btn" id="instr-pdf">Instructions PDF</button>` : ''}
         ${needsAttention(c, t) ? `<button class="btn ghost" id="snooze">Snooze 1 week</button>` : ''}
       </div>
+    </section>
+
+    <section class="panel">
+      <h2>Card</h2>
+      <div class="card-slots">${CARD_SIDES.map(side => {
+        const file = c.card && c.card[side];
+        const name = side === 'front' ? 'Front' : 'Back';
+        return file ? `
+          <div class="card-slot">
+            ${isPdf(file) ? `<button class="card-thumb pdf" data-view="${esc(file.path)}">PDF</button>` : `<button class="card-thumb" data-view="${esc(file.path)}"><img data-thumb="${esc(file.path)}" alt="${esc(label(c))} card, ${side}"></button>`}
+            <div class="small"><strong>${name}</strong></div>
+            <div class="row">
+              <label class="link">Replace<input type="file" hidden accept="image/*,application/pdf" data-card-side="${side}"></label>
+              <button class="link danger" data-card-rm="${side}">Remove</button>
+            </div>
+          </div>` : `
+          <label class="card-slot empty">
+            <span>+ ${side === 'front' ? 'Add card' : 'Add back (optional)'}</span>
+            <input type="file" hidden accept="image/*,application/pdf" data-card-side="${side}">
+          </label>`;
+      }).join('')}</div>
+      <p class="small muted">Your current card. When you renew, it moves to <em>Past cycles</em> and you add the new one.</p>
     </section>
 
     <section class="panel">
@@ -500,6 +575,33 @@ function renderDetail(id) {
     <div id="cycles"><p class="muted loading">Loading documents…</p></div>`;
 
   $('#renewed').onclick = () => openRenewModal(c);
+  if ($('#view-card')) $('#view-card').onclick = () => openCardModal(c);
+  $$('.card-slots [data-view]').forEach(b => { b.onclick = () => openFile(b.dataset.view); });
+  $$('[data-thumb]').forEach(img => { Store.fileUrl(img.dataset.thumb).then(url => { img.src = url; }).catch(() => {}); });
+  $$('[data-card-side]').forEach(input => {
+    input.onchange = () => {
+      const file = input.files[0];
+      if (!file) return;
+      const side = input.dataset.cardSide;
+      toast('Uploading…');
+      Store.setCardFile(c, side, file)
+        .then(meta => { applyLocal(c.id, { card: { ...(c.card || {}), [side]: meta } }); toast('Card saved'); renderDetail(c.id); })
+        .catch(e => { console.error(e); toast(friendlyError(e), true); });
+    };
+  });
+  $$('[data-card-rm]').forEach(b => {
+    b.onclick = () => {
+      const side = b.dataset.cardRm;
+      if (!confirm(`Remove the ${side} of this card? This deletes the file.`)) return;
+      busy(b, async () => {
+        await Store.removeCardFile(c, side);
+        const card = { ...(c.card || {}) };
+        delete card[side];
+        applyLocal(c.id, { card });
+        renderDetail(c.id);
+      });
+    };
+  });
   if ($('#instr-pdf')) $('#instr-pdf').onclick = () => openFile(c.instructionsFile.path);
   if ($('#copy-num')) $('#copy-num').onclick = () => navigator.clipboard.writeText(c.certNumber).then(() => toast('Cert number copied'));
   if ($('#snooze')) {
@@ -572,7 +674,7 @@ function renderCycles(c, cycles) {
   $('#cycles').innerHTML = `
     <section class="panel">
       <div class="panel-head"><h2>Documents <span class="muted">· this cycle</span></h2>${uploadButton(current.id)}</div>
-      <p class="small muted">${cycleRange(current)}. Keep proof here: training trackers, CE certificates, your card.</p>
+      <p class="small muted">${cycleRange(current)}. Keep proof here: training trackers, CE certificates, class rosters.</p>
       ${fileList(current)}
     </section>
 

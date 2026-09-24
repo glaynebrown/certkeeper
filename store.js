@@ -3,7 +3,7 @@
    Firestore layout:
      config/invite                                   { code }  -- set in the console only
      users/{uid}                                     profile: name, inviteCode, emailReminders
-     users/{uid}/certs/{certId}                      one certification
+     users/{uid}/certs/{certId}                      one certification (card.front / card.back = current card)
      users/{uid}/certs/{certId}/cycles/{cycleId}     one renewal period (current or archived)
        .../cycles/{cycleId}/files/{fileId}           uploaded proof (points at a Storage path)
        .../cycles/{cycleId}/entries/{entryId}        optional classes-taught / hours log
@@ -151,14 +151,20 @@ const Store = (() => {
     },
 
     // Archives the current cycle (its files stay put) and opens a fresh one.
+    // The old card is filed into the archived cycle's documents, not deleted.
     async renewCert(cert, { renewedOn, expiresOn }) {
       const next = cyclesCol(cert.id).doc();
+      const oldCycle = cyclesCol(cert.id).doc(cert.currentCycleId);
       const b = db.batch();
-      b.update(cyclesCol(cert.id).doc(cert.currentCycleId), { status: 'archived', renewedOn, archivedAt: ts() });
+      for (const side of ['front', 'back']) {
+        const f = cert.card && cert.card[side];
+        if (f) b.set(oldCycle.collection('files').doc(), { ...f, name: `Card (${side}) - ${f.name}`, uploadedMs: Date.now() });
+      }
+      b.update(oldCycle, { status: 'archived', renewedOn, archivedAt: ts() });
       b.set(next, { startOn: renewedOn, expiresOn, status: 'current', createdAt: ts() });
       b.update(certsCol().doc(cert.id), {
         issuedOn: renewedOn, expiresOn, lastRenewedOn: renewedOn, currentCycleId: next.id,
-        remindersSent: [], snoozedUntil: null, updatedAt: ts(),
+        card: null, remindersSent: [], snoozedUntil: null, updatedAt: ts(),
       });
       await b.commit();
       return next.id;
@@ -195,6 +201,22 @@ const Store = (() => {
       await certsCol().doc(cert.id).update({ instructionsFile: null });
     },
 
+    // ---- the current card (front and optional back) ----
+    async setCardFile(cert, side, file) {
+      checkFiles([file]);
+      const meta = await putFile(`${certDir(cert.id)}/card`, file);
+      const old = cert.card && cert.card[side];
+      await certsCol().doc(cert.id).update({ [`card.${side}`]: meta });
+      if (old) await removeFile(old.path);
+      return meta;
+    },
+
+    async removeCardFile(cert, side) {
+      const old = cert.card && cert.card[side];
+      await certsCol().doc(cert.id).update({ [`card.${side}`]: firebase.firestore.FieldValue.delete() });
+      if (old) await removeFile(old.path);
+    },
+
     // ---- optional tracker log ----
     async addEntry(certId, cycleId, entry, file) {
       const data = { ...entry, createdMs: Date.now() };
@@ -218,6 +240,10 @@ const Store = (() => {
       for (const cert of certs) {
         const root = safe(labelOf(cert));
         if (cert.instructionsFile) out.push({ path: cert.instructionsFile.path, zipPath: `${root}/Instructions/${safe(cert.instructionsFile.name)}` });
+        for (const side of ['front', 'back']) {
+          const f = cert.card && cert.card[side];
+          if (f) out.push({ path: f.path, zipPath: `${root}/Current card/${side} - ${safe(f.name)}` });
+        }
         for (const cy of await getCycles(cert.id)) {
           const dir = `${root}/${cy.startOn || 'start'} to ${cy.expiresOn || 'end'}${cy.id === cert.currentCycleId ? ' (current)' : ''}`;
           cy.files.forEach(f => out.push({ path: f.path, zipPath: `${dir}/${safe(f.name)}` }));
