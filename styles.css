@@ -393,6 +393,14 @@ label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 5
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 #toast.error { background: var(--bad); color: #fff; }
 
+/* ---------- home-screen app ---------- */
+/* Opened from the home screen, iPhone draws a frosted blur just below the
+   status bar that reaches into the page. Extra room keeps the header clear. */
+@media (display-mode: standalone) {
+  .container { padding-top: 32px; }
+  #offline-bar { padding-top: 28px; }
+}
+
 /* ---------- phones ---------- */
 @media (max-width: 640px) {
   .grid2, .grid3 { grid-template-columns: 1fr; }
