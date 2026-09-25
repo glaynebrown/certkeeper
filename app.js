@@ -153,6 +153,33 @@ const CARD_ICON = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rec
 const hasCard = c => !!(c.card && (c.card.front || c.card.back));
 const isPdf = f => f.contentType === 'application/pdf';
 
+const CAMERA_ICON = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.7l1.3-2h5l1.3 2h1.7A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
+
+// Reads a card with scan.js, showing progress in `status`. Returns the
+// guesses, or null if reading failed (the reason is shown in `status`).
+async function readCard(file, trigger, status) {
+  trigger.classList.add('disabled');
+  status.textContent = 'Reading your card… The first scan takes a little longer while the reader loads.';
+  try {
+    return await Scan.read(file, p => { status.textContent = `Reading your card… ${Math.round(p * 100)}%`; });
+  } catch (e) {
+    console.error(e);
+    status.textContent = friendlyError(e);
+    return null;
+  } finally {
+    trigger.classList.remove('disabled');
+  }
+}
+
+// Highlights a field that was filled from a scan, until it's changed by hand.
+function markScanned(input) {
+  const shown = input.type === 'hidden' ? input.nextElementSibling : input; // date fields show a button
+  shown.classList.add('autofilled');
+  const clear = () => shown.classList.remove('autofilled');
+  input.addEventListener('input', clear, { once: true });
+  input.addEventListener('change', clear, { once: true });
+}
+
 // Pops up the current card, with the number and expiration underneath.
 function openCardModal(c) {
   if (!c) return;
@@ -648,6 +675,10 @@ function openRenewModal(cert) {
     <h2>Renewed ${esc(label(cert))}?</h2>
     <p class="small muted">Current expiration: ${cert.expiresOn ? Dates.pretty(cert.expiresOn) : '—'}</p>
     <form id="rn" class="stack">
+      <div class="stack tight">
+        <label class="btn block scan-btn">${CAMERA_ICON}<span>Scan new card</span><input type="file" hidden accept="image/*,application/pdf" name="scan"></label>
+        <p class="hint" id="rn-scan-status">Fills in the dates below and saves it as your new card. Read right on this device.</p>
+      </div>
       <label>Date you renewed / took the class<input type="date" name="renewedOn" value="${t}" max="${t}" required></label>
       <label>New expiration date<input type="date" name="expiresOn" required></label>
       <p class="hint" id="rn-hint"></p>
@@ -675,12 +706,37 @@ function openRenewModal(cert) {
     f.expiresOn.oninput = () => { typed = true; hint.textContent = 'Using the date you entered.'; };
     refresh();
 
+    let scannedFront = null;
+    f.scan.onchange = async () => {
+      const file = f.scan.files[0];
+      f.scan.value = '';
+      if (!file) return;
+      const status = $('#rn-scan-status', m);
+      const r = await readCard(file, f.scan.closest('label'), status);
+      if (!r) return;
+      scannedFront = file;
+      const got = [];
+      if (r.issuedOn && r.issuedOn <= t) { f.renewedOn.value = r.issuedOn; markScanned(f.renewedOn); got.push('renewal date'); }
+      if (r.expiresOn) {
+        typed = true;
+        f.expiresOn.value = r.expiresOn;
+        markScanned(f.expiresOn);
+        hint.textContent = 'From your scanned card.';
+        got.push('new expiration');
+      } else {
+        refresh();
+      }
+      status.textContent = got.length
+        ? `Found the ${listText(got)}. Check the highlighted dates. The scan will be saved as your new card.`
+        : 'Couldn’t find the dates on this one, so fill them in below. The scan will still be saved as your new card.';
+    };
+
     $('#rn', m).onsubmit = e => {
       e.preventDefault();
       const renewedOn = f.renewedOn.value, expiresOn = f.expiresOn.value;
       if (!Dates.isValid(renewedOn) || !Dates.isValid(expiresOn)) return toast('Pick both dates.', true);
       if (expiresOn <= renewedOn) return toast('The new expiration should be after the renewal date.', true);
-      const newCard = { front: f.cardFront.files[0], back: f.cardBack.files[0] };
+      const newCard = { front: f.cardFront.files[0] || scannedFront, back: f.cardBack.files[0] };
       if ((newCard.front || newCard.back) && !navigator.onLine) {
         return toast('You’re offline. Remove the card photo to renew now and add it later, or wait for a connection.', true);
       }
@@ -968,6 +1024,10 @@ function renderEdit(certId) {
     <form id="cf" class="form" novalidate>
       ${editing ? '' : `
       <section class="panel stack">
+        <label class="btn primary block scan-btn">${CAMERA_ICON}<span>Scan my card</span><input type="file" hidden accept="image/*,application/pdf" id="scan-file"></label>
+        <p class="hint" id="scan-status">Photo, screenshot or PDF of your card. It’s read right on this device, and you check everything before saving.</p>
+      </section>
+      <section class="panel stack">
         <label>Start from a template
           <select name="template">
             <option value="">Custom (start blank)</option>
@@ -1190,6 +1250,51 @@ function renderEdit(certId) {
     });
   }
 
+  // Fill the form from a scanned card. Returns what was found, for the note.
+  let scannedCard = null;
+  function applyScan(r) {
+    const got = [];
+    const t = TEMPLATES.find(x => x.id === r.templateId);
+    if (t) {
+      if (t.askState && r.stateCode) f.licenseState.value = r.stateCode;
+      f.template.value = t.id;
+      f.template.onchange();
+      markScanned(f.name);
+      if (t.askState && r.stateCode) markScanned(f.licenseState);
+      got.push(`which cert it is (${t.label || t.name}${t.askState && r.stateCode ? `, ${stateName(r.stateCode)}` : ''})`);
+    }
+    if (r.certNumber) { f.certNumber.value = r.certNumber; markScanned(f.certNumber); got.push('the number'); }
+    if (r.validityMonths) {
+      f.validityUnit.value = r.validityMonths % 12 === 0 ? 'y' : 'm';
+      f.validityN.value = r.validityMonths % 12 === 0 ? r.validityMonths / 12 : r.validityMonths;
+    }
+    if (r.issuedOn) { f.issuedOn.value = r.issuedOn; markScanned(f.issuedOn); got.push('the issue date'); }
+    let exp = r.expiresOn, worked = false;
+    if (!exp && r.issuedOn) {
+      exp = Dates.suggestExpiration(f.renewalRule.value === 'classDateEOM' ? 'classDateEOM' : 'classDate', null, r.issuedOn, validityMonths());
+      worked = !!exp;
+    }
+    if (exp) { f.expiresOn.value = exp; markScanned(f.expiresOn); got.push(worked ? 'the expiration (worked out from the issue date)' : 'the expiration'); }
+    drawReminderDates();
+    return got;
+  }
+  const scanInput = $('#scan-file');
+  if (scanInput) {
+    scanInput.onchange = async () => {
+      const file = scanInput.files[0];
+      scanInput.value = '';
+      if (!file) return;
+      const status = $('#scan-status');
+      const r = await readCard(file, scanInput.closest('label'), status);
+      if (!r) return;
+      scannedCard = file;
+      const got = applyScan(r);
+      status.innerHTML = got.length
+        ? `<strong>Found ${esc(listText(got))}.</strong> The highlighted fields came from your card, so check each one before saving. The scan will be saved as this cert’s card.`
+        : 'Couldn’t find the details on this one. Try a sharper, straight-on photo in good light, or fill it in by hand. The scan will still be saved as this cert’s card.';
+    };
+  }
+
   if (editing) {
     fill(editing);
     if ($('#instr-view')) $('#instr-view').onclick = () => openFile(editing.instructionsFile.path);
@@ -1256,6 +1361,15 @@ function renderEdit(certId) {
       else if (f.removeInstr && f.removeInstr.checked) {
         await Store.removeInstructionsFile(saved);
         applyLocal(id, { instructionsFile: null });
+      }
+      if (scannedCard && !editing) {
+        try {
+          applyLocal(id, { card: { front: await Store.setCardFile({ id, card: null }, 'front', scannedCard) } });
+        } catch (err) {
+          toast(`Saved. The card image didn’t upload (${friendlyError(err)}); you can add it on the cert page.`, true);
+          location.hash = `#/cert/${id}`;
+          return;
+        }
       }
       toast('Saved');
       location.hash = `#/cert/${id}`;

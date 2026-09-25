@@ -313,6 +313,15 @@ label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 5
 
 .danger-zone { border-color: var(--bad); }
 
+/* ---------- scan my card ---------- */
+.scan-btn { flex-direction: row; gap: 8px; min-height: 46px; } /* it's a <label>, which stacks by default */
+.scan-btn .icon { width: 22px; height: 22px; }
+.autofilled {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+
 /* ---------- date fields + picker ---------- */
 .date-field {
   width: 100%; min-height: 42px; padding: 8px 10px;

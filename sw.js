@@ -12,7 +12,7 @@
 const APP_CACHE = 'ck-app-v1';
 const FILE_CACHE = 'ck-files-v1';
 const APP_FILES = [
-  './', 'index.html', 'styles.css', 'app.js', 'store.js', 'dates.js', 'templates.js',
+  './', 'index.html', 'styles.css', 'app.js', 'store.js', 'dates.js', 'templates.js', 'scan.js',
   'firebase-config.js', 'manifest.json', 'icon-192.png', 'apple-touch-icon.png',
 ];
 const SDK = ['app', 'auth', 'firestore', 'storage']
