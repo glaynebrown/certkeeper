@@ -1023,18 +1023,24 @@ function renderEdit(certId) {
     <h1 class="page-title">${editing ? `Edit ${esc(label(editing))}` : 'Add a certification'}</h1>
     <form id="cf" class="form" novalidate>
       ${editing ? '' : `
-      <section class="panel stack">
-        <label class="btn primary block scan-btn">${CAMERA_ICON}<span>Scan my card</span><input type="file" hidden accept="image/*,application/pdf" id="scan-file"></label>
-        <p class="hint" id="scan-status">Photo, screenshot or PDF of your card. It’s read right on this device, and you check everything before saving.</p>
-      </section>
-      <section class="panel stack">
-        <label>Start from a template
-          <select name="template">
-            <option value="">Custom (start blank)</option>
-            ${groups.map(g => `<optgroup label="${esc(g)}">${TEMPLATES.filter(t => t.group === g).map(t => `<option value="${t.id}">${esc(t.label || t.name)}</option>`).join('')}</optgroup>`).join('')}
-          </select>
-        </label>
-        <p class="hint">Fills in the issuer, links and renewal rule. You add your number and dates.</p>
+      <section class="panel">
+        <h2>How do you want to start?</h2>
+        <div class="start-options">
+          <div class="stack tight">
+            <span class="field-label wide-only">Scan your card</span>
+            <label class="btn primary block scan-btn">${CAMERA_ICON}<span>Scan my card</span><input type="file" hidden accept="image/*,application/pdf" id="scan-file"></label>
+            <p class="hint" id="scan-status"></p>
+          </div>
+          <div class="or" aria-hidden="true"><span>or</span></div>
+          <div class="stack tight">
+            <label>Start from a template
+              <select name="template">
+                <option value="">Custom (start blank)</option>
+                ${groups.map(g => `<optgroup label="${esc(g)}">${TEMPLATES.filter(t => t.group === g).map(t => `<option value="${t.id}">${esc(t.label || t.name)}</option>`).join('')}</optgroup>`).join('')}
+              </select>
+            </label>
+          </div>
+        </div>
       </section>`}
 
       <section class="panel stack">
